@@ -1,5 +1,6 @@
 import { FolderSuggest } from "Suggest/FolderSuggest";
 import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder } from "obsidian";
+import {TagSuggest} from "./Suggest/TagSuggest";
 
 interface ArchiveConfig {
 	sourceFolder: string;
@@ -8,6 +9,7 @@ interface ArchiveConfig {
 	deleteEmptyFolders: boolean;
 	useLastModifiedDate: boolean;
 	days: number;
+	excludeTag: string;
 }
 
 interface AutoArchivePluginSettings {
@@ -19,7 +21,7 @@ const DEFAULT_SETTINGS: AutoArchivePluginSettings = {
 };
 
 const MIN_DAYS = 1; // Min. value for `days` setting
-const INITIAL_PROCESS_WAIT_MS = 10 * 1000; // Wait before first process
+const INITIAL_PROCESS_WAIT_MS = 10 * 1000 * 0; // Wait before first process
 const PROCESS_INTERVAL_MS = 60 * 1000; // Interval to process files
 const NUM_MS_IN_DAY = 86400000;
 
@@ -131,8 +133,11 @@ export default class AutoArchivePlugin extends Plugin {
 		const today = new Date();
 		const sourceDate = new Date(archiveConfig.useLastModifiedDate ? sourceFile.stat.mtime : sourceFile.stat.ctime);
 		const cutoffDate = new Date(today.getTime() - NUM_MS_IN_DAY * archiveConfig.days);
-		
-		return sourceDate < cutoffDate;
+
+		const sanitizedTag = archiveConfig.excludeTag.replace('#', '');
+		const fileTags = app.metadataCache.getFileCache(sourceFile)?.frontmatter?.tags
+
+		return sourceDate < cutoffDate && !fileTags?.includes(sanitizedTag);
 	}
 
 	/**
@@ -324,6 +329,19 @@ class AutoArchiveSettingTab extends PluginSettingTab {
 							});
 				})
 				.setClass("aa-folder-search");
+
+			new Setting(containerEl)
+				.setName("Exclude labels")
+				.setDesc("Exclude specific note labels from archiving")
+				.addSearch((cb) => {
+					new TagSuggest(cb.inputEl),
+						cb.setPlaceholder("Example: #no-archive")
+							.setValue(config.excludeTag)
+							.onChange((newTag) => {
+								config.excludeTag = newTag;
+								this.plugin.saveSettings();
+							})
+				})
 
 			new Setting(containerEl)
 				.setName("Archive folder")
